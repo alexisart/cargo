@@ -265,6 +265,13 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
         );
     }
 
+    if let Some(ar) = &bcx.target_data.target_config(unit.kind).ar {
+        cmd.env(
+            "RUSTC_AR",
+            ar.val.clone().resolve_program(bcx.config),
+        );
+    }
+
     if let Some(links) = unit.pkg.manifest().links() {
         cmd.env("CARGO_MANIFEST_LINKS", links);
     }

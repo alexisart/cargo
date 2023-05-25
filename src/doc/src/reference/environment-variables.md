@@ -381,6 +381,11 @@ let out_dir = env::var("OUT_DIR").unwrap();
                    changed by editing `.cargo/config.toml`; see the documentation
                    about [cargo configuration][cargo-config] for more
                    information.
+* `RUSTC_AR` --- The path to the linkerar binary that Cargo has resolved to use
+                   for the current target, if specified. The ar can be
+                   changed by editing `.cargo/config.toml`; see the documentation
+                   about [cargo configuration][cargo-config] for more
+                   information.
 * `CARGO_ENCODED_RUSTFLAGS` --- extra flags that Cargo invokes `rustc` with,
   separated by a `0x1f` character (ASCII Unit Separator). See
   [`build.rustflags`]. Note that since Rust 1.55, `RUSTFLAGS` is removed from

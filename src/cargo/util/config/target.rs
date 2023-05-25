@@ -28,6 +28,8 @@ pub struct TargetConfig {
     pub rustflags: OptValue<StringList>,
     /// The path of the linker for this target.
     pub linker: OptValue<ConfigRelativePath>,
+    /// The path of the archiver for this target.
+    pub ar: OptValue<ConfigRelativePath>,
     /// Build script override for the given library name.
     ///
     /// Any package with a `links` value for the given library name will skip
@@ -96,6 +98,7 @@ pub(super) fn load_host_triple(config: &Config, triple: &str) -> CargoResult<Tar
             runner: None,
             rustflags: None,
             linker: None,
+            ar: None,
             links_overrides: BTreeMap::new(),
         })
     }
@@ -116,6 +119,7 @@ fn load_config_table(config: &Config, prefix: &str) -> CargoResult<TargetConfig>
     let runner: OptValue<PathAndArgs> = config.get(&format!("{}.runner", prefix))?;
     let rustflags: OptValue<StringList> = config.get(&format!("{}.rustflags", prefix))?;
     let linker: OptValue<ConfigRelativePath> = config.get(&format!("{}.linker", prefix))?;
+    let ar: OptValue<ConfigRelativePath> = config.get(&format!("{}.ar", prefix))?;
     // Links do not support environment variables.
     let target_key = ConfigKey::from_str(prefix);
     let links_overrides = match config.get_table(&target_key)? {
@@ -126,6 +130,7 @@ fn load_config_table(config: &Config, prefix: &str) -> CargoResult<TargetConfig>
         runner,
         rustflags,
         linker,
+        ar,
         links_overrides,
     })
 }

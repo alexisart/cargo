@@ -226,6 +226,7 @@ fn custom_build_env_vars() {
                 assert!(env::var("RUSTC_WORKSPACE_WRAPPER").is_err());
 
                 assert!(env::var("RUSTC_LINKER").is_err());
+                assert!(env::var("RUSTC_AR").is_err());
 
                 assert!(env::var("RUSTFLAGS").is_err());
                 let rustflags = env::var("CARGO_ENCODED_RUSTFLAGS").unwrap();
@@ -566,6 +567,7 @@ fn custom_build_invalid_host_config_feature_flag() {
                 r#"
                 [target.{}]
                 linker = "/path/to/linker"
+                ar = "/path/to/ar"
                 "#,
                 target
             ),
@@ -726,6 +728,289 @@ fn custom_build_env_var_rustc_linker_cross_arch_host() {
 
     // build.rs should be built fine since cross target != host target.
     // assertion should succeed since it's still passed the target linker
+    p.cargo("build -Z target-applies-to-host -Z host-config --verbose --target")
+        .arg(&target)
+        .masquerade_as_nightly_cargo(&["target-applies-to-host", "host-config"])
+        .run();
+}
+
+#[cargo_test]
+fn custom_build_env_var_rustc_ar() {
+    if cross_compile::disabled() {
+        return;
+    }
+    let target = cross_compile::alternate();
+    let p = project()
+        .file(
+            ".cargo/config",
+            &format!(
+                r#"
+                [target.{}]
+                ar = "/path/to/ar"
+                "#,
+                target
+            ),
+        )
+        .file(
+            "build.rs",
+            r#"
+            use std::env;
+
+            fn main() {
+                assert!(env::var("RUSTC_AR").unwrap().ends_with("/path/to/ar"));
+            }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    // no crate type set => ar never called => build succeeds if and
+    // only if build.rs succeeds, despite ar binary not existing.
+    p.cargo("build --target").arg(&target).run();
+}
+
+// #[cargo_test]
+// fn custom_build_env_var_rustc_ar_bad_host_target() {
+//     let target = rustc_host();
+//     let p = project()
+//         .file(
+//             ".cargo/config",
+//             &format!(
+//                 r#"
+//                 [target.{}]
+//                 ar = "/path/to/ar"
+//                 "#,
+//                 target
+//             ),
+//         )
+//         .file("build.rs", "fn main() {}")
+//         .file("src/lib.rs", "")
+//         .build();
+
+//     // build.rs should fail since host == target when no target is set
+//     p.cargo("build --verbose")
+//         .with_status(101)
+//         .with_stderr_contains(
+//             "\
+// [COMPILING] foo v0.0.1 ([CWD])
+// [RUNNING] `rustc --crate-name build_script_build build.rs [..]--crate-type bin [..]-C ar=[..]/path/to/ar [..]`
+// [ERROR] ar `[..]/path/to/ar` not found
+// "
+//         )
+//         .run();
+// }
+
+#[cargo_test]
+fn custom_build_env_var_rustc_ar_host_target() {
+    let target = rustc_host();
+    let p = project()
+        .file(
+            ".cargo/config",
+            &format!(
+                r#"
+                target-applies-to-host = false
+                [target.{}]
+                ar = "/path/to/ar"
+                "#,
+                target
+            ),
+        )
+        .file(
+            "build.rs",
+            r#"
+            use std::env;
+
+            fn main() {
+                assert!(env::var("RUSTC_AR").unwrap().ends_with("/path/to/ar"));
+            }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    // no crate type set => ar never called => build succeeds if and
+    // only if build.rs succeeds, despite ar binary not existing.
+    p.cargo("build -Z target-applies-to-host --target")
+        .arg(&target)
+        .masquerade_as_nightly_cargo(&["target-applies-to-host"])
+        .run();
+}
+
+#[cargo_test]
+fn custom_build_env_var_rustc_ar_host_target_env() {
+    let target = rustc_host();
+    let p = project()
+        .file(
+            ".cargo/config",
+            &format!(
+                r#"
+                [target.{}]
+                ar = "/path/to/ar"
+                "#,
+                target
+            ),
+        )
+        .file(
+            "build.rs",
+            r#"
+            use std::env;
+
+            fn main() {
+                assert!(env::var("RUSTC_AR").unwrap().ends_with("/path/to/ar"));
+            }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    // no crate type set => ar never called => build succeeds if and
+    // only if build.rs succeeds, despite ar binary not existing.
+    p.cargo("build -Z target-applies-to-host --target")
+        .env("CARGO_TARGET_APPLIES_TO_HOST", "false")
+        .arg(&target)
+        .masquerade_as_nightly_cargo(&["target-applies-to-host"])
+        .run();
+}
+
+// #[cargo_test]
+// fn custom_build_ar_host_target_with_bad_host_config() {
+//     let target = rustc_host();
+//     let p = project()
+//         .file(
+//             ".cargo/config",
+//             &format!(
+//                 r#"
+//                 [host]
+//                 ar = "/path/to/host/ar"
+//                 [target.{}]
+//                 ar = "/path/to/target/ar"
+//                 "#,
+//                 target
+//             ),
+//         )
+//         .file("build.rs", "fn main() {}")
+//         .file("src/lib.rs", "")
+//         .build();
+
+//     // build.rs should fail due to bad host ar being set
+//     p.cargo("build -Z target-applies-to-host -Z host-config --verbose --target")
+//             .arg(&target)
+//             .masquerade_as_nightly_cargo(&["target-applies-to-host", "host-config"])
+//             .with_status(101)
+//             .with_stderr_contains(
+//                 "\
+// [COMPILING] foo v0.0.1 ([CWD])
+// [RUNNING] `rustc --crate-name build_script_build build.rs [..]--crate-type bin [..]-C ar=[..]/path/to/host/ar [..]`
+// [ERROR] ar `[..]/path/to/host/ar` not found
+// "
+//             )
+//             .run();
+// }
+
+// #[cargo_test]
+// fn custom_build_ar_bad_host() {
+//     let target = rustc_host();
+//     let p = project()
+//         .file(
+//             ".cargo/config",
+//             &format!(
+//                 r#"
+//                 [host]
+//                 ar = "/path/to/host/ar"
+//                 [target.{}]
+//                 ar = "/path/to/target/ar"
+//                 "#,
+//                 target
+//             ),
+//         )
+//         .file("build.rs", "fn main() {}")
+//         .file("src/lib.rs", "")
+//         .build();
+
+//     // build.rs should fail due to bad host ar being set
+//     p.cargo("build -Z target-applies-to-host -Z host-config --verbose --target")
+//             .arg(&target)
+//             .masquerade_as_nightly_cargo(&["target-applies-to-host", "host-config"])
+//             .with_status(101)
+//             .with_stderr_contains(
+//                 "\
+// [COMPILING] foo v0.0.1 ([CWD])
+// [RUNNING] `rustc --crate-name build_script_build build.rs [..]--crate-type bin [..]-C ar=[..]/path/to/host/ar [..]`
+// [ERROR] ar `[..]/path/to/host/ar` not found
+// "
+//             )
+//             .run();
+// }
+
+// #[cargo_test]
+// fn custom_build_ar_bad_host_with_arch() {
+//     let target = rustc_host();
+//     let p = project()
+//         .file(
+//             ".cargo/config",
+//             &format!(
+//                 r#"
+//                 [host]
+//                 ar = "/path/to/host/ar"
+//                 [host.{}]
+//                 ar = "/path/to/host/arch/ar"
+//                 [target.{}]
+//                 ar = "/path/to/target/ar"
+//                 "#,
+//                 target, target
+//             ),
+//         )
+//         .file("build.rs", "fn main() {}")
+//         .file("src/lib.rs", "")
+//         .build();
+
+//     // build.rs should fail due to bad host ar being set
+//     p.cargo("build -Z target-applies-to-host -Z host-config --verbose --target")
+//             .arg(&target)
+//             .masquerade_as_nightly_cargo(&["target-applies-to-host", "host-config"])
+//             .with_status(101)
+//             .with_stderr_contains(
+//                 "\
+// [COMPILING] foo v0.0.1 ([CWD])
+// [RUNNING] `rustc --crate-name build_script_build build.rs [..]--crate-type bin [..]-C ar=[..]/path/to/host/arch/ar [..]`
+// [ERROR] ar `[..]/path/to/host/arch/ar` not found
+// "
+//             )
+//             .run();
+// }
+
+#[cargo_test]
+fn custom_build_env_var_rustc_ar_cross_arch_host() {
+    let target = rustc_host();
+    let cross_target = cross_compile::alternate();
+    let p = project()
+        .file(
+            ".cargo/config",
+            &format!(
+                r#"
+                [host.{}]
+                ar = "/path/to/host/arch/ar"
+                [target.{}]
+                ar = "/path/to/target/ar"
+                "#,
+                cross_target, target
+            ),
+        )
+        .file(
+            "build.rs",
+            r#"
+            use std::env;
+
+            fn main() {
+                assert!(env::var("RUSTC_AR").unwrap().ends_with("/path/to/target/ar"));
+            }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    // build.rs should be built fine since cross target != host target.
+    // assertion should succeed since it's still passed the target ar
     p.cargo("build -Z target-applies-to-host -Z host-config --verbose --target")
         .arg(&target)
         .masquerade_as_nightly_cargo(&["target-applies-to-host", "host-config"])
